@@ -1,0 +1,15 @@
+# ---- Python ----
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# ---- 打包产物 ----
+build/
+dist/
+*.spec
+
+# ---- RyzenAdj 二进制：从上游 release 下载，见 README ----
+vendor/
