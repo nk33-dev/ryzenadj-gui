@@ -18,6 +18,9 @@ class Setting:
     maximum: float
     decimals: int = 0
 
+    def in_range(self, value: float) -> bool:
+        return self.minimum <= value <= self.maximum
+
     def to_raw(self, value: float) -> int:
         raw = round(value * self.scale)
         if not 0 <= raw <= 0xFFFFFFFF:

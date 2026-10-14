@@ -76,10 +76,17 @@ class SettingsPage(QWidget):
 
         read_btn = QPushButton("读取当前值")
         read_btn.clicked.connect(self.read_current)
+        save_default_btn = QPushButton("记为系统默认")
+        save_default_btn.setToolTip("把\"当前限制\"一列的值记下来，之后可以一键恢复")
+        save_default_btn.clicked.connect(self._save_defaults)
+        self._restore_btn = QPushButton("恢复系统默认")
+        self._restore_btn.clicked.connect(self._restore_defaults)
         apply_btn = QPushButton("应用")
         apply_btn.setDefault(True)
         apply_btn.clicked.connect(self.apply)
         buttons = QHBoxLayout()
+        buttons.addWidget(save_default_btn)
+        buttons.addWidget(self._restore_btn)
         buttons.addStretch(1)
         buttons.addWidget(read_btn)
         buttons.addWidget(apply_btn)
@@ -92,6 +99,7 @@ class SettingsPage(QWidget):
 
         self._load_preset()
         self.read_current()
+        self._update_restore_btn()
 
     def values(self) -> Preset:
         return {r.setting.key: r.spin.value() for r in self._rows if r.enabled.isChecked()}
@@ -117,12 +125,15 @@ class SettingsPage(QWidget):
                 r.spin.setValue(value)
 
     def apply(self) -> None:
+        self._write(self.values())
+
+    def _write(self, values: Preset) -> None:
         for r in self._rows:
-            if not r.enabled.isChecked():
+            if r.setting.key not in values:
                 r.result.clear()
                 continue
             try:
-                self._ry.apply(r.setting.setter, r.setting.to_raw(r.spin.value()))
+                self._ry.apply(r.setting.setter, r.setting.to_raw(values[r.setting.key]))
             except (RyzenAdjError, ValueError) as e:
                 r.result.setText(f"✗ {e}")
                 r.result.setStyleSheet("color: #c62828")
@@ -130,6 +141,47 @@ class SettingsPage(QWidget):
                 r.result.setText("✓ 已应用")
                 r.result.setStyleSheet("color: #2e7d32")
         self.read_current()
+
+    def _current_limits(self) -> Preset:
+        if self._ry.table_ok:
+            self._ry.refresh()
+        values = {}
+        for s in SETTINGS:
+            value = self._ry.read(s.getter)
+            # 读不到的、或者是 0 这种明显没启用的值，恢复时写回去没有意义，跳过
+            if value is not None and s.in_range(value):
+                values[s.key] = round(value, s.decimals)
+        return values
+
+    def _save_defaults(self) -> None:
+        values = self._current_limits()
+        if not values:
+            QMessageBox.warning(self, "记为系统默认", "没有读到任何可记录的限制值。")
+            return
+        lines = "\n".join(
+            f"{s.label}：{values[s.key]:g} {s.unit}" for s in SETTINGS if s.key in values
+        )
+        answer = QMessageBox.question(
+            self,
+            "记为系统默认",
+            "请确认现在是刚开机、没用本程序改过的状态，否则记下的不是真正的默认值。\n\n"
+            f"将记录：\n{lines}",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._store.save_defaults(values)
+        self._update_restore_btn()
+
+    def _restore_defaults(self) -> None:
+        self._write(self._store.defaults)
+
+    def _update_restore_btn(self) -> None:
+        if self._store.defaults:
+            self._restore_btn.setEnabled(True)
+            self._restore_btn.setToolTip(f"记录于 {self._store.defaults_saved_at}")
+        else:
+            self._restore_btn.setEnabled(False)
+            self._restore_btn.setToolTip("还没记录过系统默认值")
 
     def _load_preset(self) -> None:
         name = self._preset_box.currentText()

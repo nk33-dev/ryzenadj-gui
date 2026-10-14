@@ -45,3 +45,27 @@ def test_delete_preset(tmp_path):
     store = PresetStore(path)
     store.delete("均衡")
     assert "均衡" not in PresetStore(path).names()
+
+
+def test_no_defaults_initially(tmp_path):
+    assert PresetStore(tmp_path / "presets.json").defaults == {}
+
+
+def test_defaults_roundtrip(tmp_path):
+    path = tmp_path / "presets.json"
+    PresetStore(path).save_defaults({"stapm-limit": 50.0, "tctl-temp": 100.0})
+    store = PresetStore(path)
+    assert store.defaults == {"stapm-limit": 50.0, "tctl-temp": 100.0}
+    assert store.defaults_saved_at
+
+
+def test_defaults_kept_out_of_presets(tmp_path):
+    path = tmp_path / "presets.json"
+    store = PresetStore(path)
+    store.save_defaults({"stapm-limit": 50.0})
+    assert PresetStore(path).names() == ["省电", "均衡", "性能"]
+
+
+def test_zero_skin_temp_out_of_range():
+    # 这台机器 BIOS 没启用 STT 时读出来是 0，不能当默认值写回去
+    assert not SETTINGS_BY_KEY["apu-skin-temp"].in_range(0)
